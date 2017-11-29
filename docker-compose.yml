@@ -32,7 +32,7 @@ services:
             - $GOPATH/src:/go/src
             - /var/run/docker.sock:/var/run/docker.sock
             - networks:/pwd
-            - .activiti/enterprise-license:/root/.activiti/enterprise-license/
+     #       - .activiti/enterprise-license:/root/.activiti/enterprise-license/
         ports:
             - "8022:22"
             - "8053:53"
