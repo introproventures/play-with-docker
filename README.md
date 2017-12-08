@@ -1,5 +1,6 @@
 # play-with-docker
 
+This is cloned version of play withdocker with small updates.
 
 Play With Docker gives you the experience of having a free Alpine Linux Virtual Machine in the cloud
 where you can build and run Docker containers and even create clusters with Docker features like Swarm Mode.
