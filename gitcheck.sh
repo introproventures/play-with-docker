@@ -8,7 +8,7 @@ do
 	if [ $? != 0 ]
 	then
 	  echo `date` "Changes detected."
-	  ./run.sh #-cleanDocker -cleanAllDockerImages -buildAll -dockerPush
+	  docker-compose up
 	fi
 	sleep 1m
 done
