@@ -10,7 +10,7 @@ do
 	  echo `date` " Changes detected. Stopping previous run. "
 	  docker-compose down &
 	  
-          sleep 5
+          sleep 25
 	  echo `date` " Cleaning system"
           docker system prune -f
 	  echo `date` " Pull new changes"
