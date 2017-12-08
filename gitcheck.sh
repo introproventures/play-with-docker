@@ -9,7 +9,7 @@ do
 	then
 	  echo `date` " Changes detected. Stopping previous run. "
 	  docker-compose down &
-	  
+	  docker rm -f $(docker ps |grep dind|awk '{print $1}')
           sleep 25
 	  echo `date` " Cleaning system"
           docker system prune -f
