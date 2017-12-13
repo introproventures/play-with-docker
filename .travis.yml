@@ -61,5 +61,5 @@ after_success:
   - if [ "$TRAVIS_BRANCH" == "master" ]; then
 #    docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD";
 #    docker push USER/REPO;
-  echo "have to push repo or do deployment in case of master branch"
+ - echo "have to push repo or do deployment in case of master branch"
 fi
