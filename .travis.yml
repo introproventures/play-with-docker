@@ -14,6 +14,9 @@ go:
 # code in vendor/
 install: true
 
+sudo: required
+services:
+  - docker
 matrix:
   # It's ok if our code fails on unstable development versions of Go.
   allow_failures:
@@ -30,23 +33,33 @@ notifications:
 # flunk the build and immediately stop. It's sorta like having
 # set -e enabled in bash. 
 before_script:
-- GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/
+- GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/ )
 - GOPATH=$HOME/go
 -  mkdir -p $HOME/go/src/github.com/play-with-docker 
 -  cd $HOME/go/src/github.com/play-with-docker
 -  git clone https://github.com/introproventures/play-with-docker.git
 -  cd play-with-docker
 -  go get -u github.com/golang/dep/cmd/dep
--  dep ensure
-  #sudo docker swarm init 
+-  $HOME/go/bin/dep ensure
+- sudo docker swarm init 
 - sudo modprobe xt_ipvs
-  #sudo docker pull  introproventures/dind
+- sudo docker pull  introproventures/dind
 # script always run to completion (set +e). All of these code checks are must haves
 # in a modern Go project.
 script:
-  - test -z $(gofmt -s -l $GO_FILES)         # Fail if a .go file hasn't been formatted with gofmt
+ # - test -z $(gofmt -s -l $GO_FILES)         # Fail if a .go file hasn't been formatted with gofmt
+ - docker-compose -d up & 
+ - sleep 120
+ - docker ps 
+ - docker compose down
   #- go test -v -race ./...                   # Run all the tests with the race detector enabled
   #- go vet ./...                             # go vet is the official Go static analyzer
   #- megacheck ./...                          # "go vet on steroids" + linter
   #- gocyclo -over 19 $GO_FILES               # forbid code with huge functions
   #- golint -set_exit_status $(go list ./...) # one last linter
+after_success:
+  - if [ "$TRAVIS_BRANCH" == "master" ]; then
+#    docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD";
+#    docker push USER/REPO;
+  echo "have to push repo or do deployment in case of master branch"
+fi
