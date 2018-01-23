@@ -44,29 +44,30 @@ type SessionSetupInstanceConf struct {
 	Tls            bool       `json:"tls"`
 }
 
-func (p *pwd) SessionNew(playground *types.Playground, userId string, duration time.Duration, stack, stackName, imageName string) (*types.Session, error) {
+func (p *pwd) SessionNew(ctx context.Context, config types.SessionConfig) (*types.Session, error) {
 	defer observeAction("SessionNew", time.Now())
 
 	s := &types.Session{}
 	s.Id = p.generator.NewId()
 	s.CreatedAt = time.Now()
-	s.ExpiresAt = s.CreatedAt.Add(duration)
+	s.ExpiresAt = s.CreatedAt.Add(config.Duration)
 	s.Ready = true
-	s.Stack = stack
-	s.UserId = userId
-	s.PlaygroundId = playground.Id
+	s.Stack = config.Stack
+	s.UserId = config.UserId
+	s.PlaygroundId = config.Playground.Id
 
 	if s.Stack != "" {
 		s.Ready = false
 	}
+	stackName := config.StackName
 	if stackName == "" {
 		stackName = "pwd"
 	}
 	s.StackName = stackName
-	s.ImageName = imageName
+	s.ImageName = config.ImageName
 
 	log.Printf("NewSession id=[%s]\n", s.Id)
-	if err := p.sessionProvisioner.SessionNew(playground, s); err != nil {
+	if err := p.sessionProvisioner.SessionNew(ctx, s); err != nil {
 		log.Println(err)
 		return nil, err
 	}
@@ -204,17 +205,17 @@ func (p *pwd) SessionDeployStack(s *types.Session) error {
 	return nil
 }
 
-func (p *pwd) SessionGet(sessionId string) *types.Session {
+func (p *pwd) SessionGet(sessionId string) (*types.Session, error) {
 	defer observeAction("SessionGet", time.Now())
 
 	s, err := p.storage.SessionGet(sessionId)
 
 	if err != nil {
 		log.Println(err)
-		return nil
+		return nil, err
 	}
 
-	return s
+	return s, nil
 }
 
 func (p *pwd) SessionSetup(session *types.Session, sconf SessionSetupConf) error {
@@ -234,7 +235,7 @@ func (p *pwd) SessionSetup(session *types.Session, sconf SessionSetupConf) error
 		return sessionNotEmpty
 	}
 
-	g, _ := errgroup.WithContext(context.Background())
+	g, ctx := errgroup.WithContext(context.Background())
 
 	for _, conf := range sconf.Instances {
 		conf := conf
@@ -290,12 +291,26 @@ func (p *pwd) SessionSetup(session *types.Session, sconf SessionSetupConf) error
 			}
 
 			for _, cmd := range conf.Run {
-				exitCode, err := p.InstanceExec(i, cmd)
-				if err != nil {
+				errch := make(chan error)
+				go func() {
+					exitCode, err := p.InstanceExec(i, cmd)
+					fmt.Printf("Finished execuing command [%s] on instance %s with code [%d] and err [%v]\n", cmd, i.Name, exitCode, err)
+
+					if err != nil {
+						errch <- err
+					}
+					if exitCode != 0 {
+						errch <- fmt.Errorf("Command returned %d on instance %s", exitCode, i.IP)
+					}
+					errch <- nil
+				}()
+
+				// ctx.Done() could be called if the errgroup is cancelled due to a previous error. In that case, return immediately
+				select {
+				case err = <-errch:
 					return err
-				}
-				if exitCode != 0 {
-					return fmt.Errorf("Command returned %d on instance %s", exitCode, i.IP)
+				case <-ctx.Done():
+					return ctx.Err()
 				}
 			}
 			return nil

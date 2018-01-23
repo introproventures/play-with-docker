@@ -1,29 +1,24 @@
 package handlers
 
 import (
-	"encoding/json"
+	"encoding/base64"
+	"io"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
 )
 
-type execRequest struct {
-	Cmd []string `json:"command"`
-}
-
-type execResponse struct {
-	ExitCode int `json:"status_code"`
-}
-
-func Exec(rw http.ResponseWriter, req *http.Request) {
+func file(rw http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	sessionId := vars["sessionId"]
 	instanceName := vars["instanceName"]
 
-	var er execRequest
-	err := json.NewDecoder(req.Body).Decode(&er)
-	if err != nil {
+	query := req.URL.Query()
+
+	path := query.Get("path")
+
+	if path == "" {
 		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -33,13 +28,14 @@ func Exec(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusNotFound)
 		return
 	}
+
 	i := core.InstanceGet(s, instanceName)
 	if i == nil {
 		rw.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	code, err := core.InstanceExec(i, er.Cmd)
+	instanceFile, err := core.InstanceFile(i, path)
 
 	if err != nil {
 		log.Println(err)
@@ -47,5 +43,11 @@ func Exec(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	json.NewEncoder(rw).Encode(execResponse{code})
+	encoder := base64.NewEncoder(base64.StdEncoding, rw)
+
+	if _, err = io.Copy(encoder, instanceFile); err != nil {
+		log.Println(err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }

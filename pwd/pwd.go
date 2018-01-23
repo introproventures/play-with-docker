@@ -1,6 +1,7 @@
 package pwd
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -72,11 +73,11 @@ func SessionNotEmpty(e error) bool {
 }
 
 type PWDApi interface {
-	SessionNew(playground *types.Playground, userId string, duration time.Duration, stack string, stackName, imageName string) (*types.Session, error)
+	SessionNew(ctx context.Context, config types.SessionConfig) (*types.Session, error)
 	SessionClose(session *types.Session) error
 	SessionGetSmallestViewPort(sessionId string) types.ViewPort
 	SessionDeployStack(session *types.Session) error
-	SessionGet(id string) *types.Session
+	SessionGet(id string) (*types.Session, error)
 	SessionSetup(session *types.Session, conf SessionSetupConf) error
 
 	InstanceNew(session *types.Session, conf types.InstanceConfig) (*types.Instance, error)
@@ -88,6 +89,8 @@ type PWDApi interface {
 	InstanceFindBySession(session *types.Session) ([]*types.Instance, error)
 	InstanceDelete(session *types.Session, instance *types.Instance) error
 	InstanceExec(instance *types.Instance, cmd []string) (int, error)
+	InstanceFSTree(instance *types.Instance) (io.Reader, error)
+	InstanceFile(instance *types.Instance, filePath string) (io.Reader, error)
 
 	ClientNew(id string, session *types.Session) *types.Client
 	ClientResizeViewPort(client *types.Client, cols, rows uint)

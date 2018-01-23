@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
 
 	"golang.org/x/crypto/acme/autocert"
+	"golang.org/x/oauth2"
 
 	gh "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -16,14 +20,30 @@ import (
 	"github.com/play-with-docker/play-with-docker/config"
 	"github.com/play-with-docker/play-with-docker/event"
 	"github.com/play-with-docker/play-with-docker/pwd"
+	"github.com/play-with-docker/play-with-docker/pwd/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/negroni"
+	oauth2FB "golang.org/x/oauth2/facebook"
+	oauth2Github "golang.org/x/oauth2/github"
 )
 
 var core pwd.PWDApi
 var e event.EventApi
+var landings = map[string][]byte{}
+
+var latencyHistogramVec = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "pwd_handlers_duration_ms",
+	Help:    "How long it took to process a specific handler, in a specific host",
+	Buckets: []float64{300, 1200, 5000},
+}, []string{"action"})
 
 type HandlerExtender func(h *mux.Router)
+
+func init() {
+	prometheus.MustRegister(latencyHistogramVec)
+
+}
 
 func Bootstrap(c pwd.PWDApi, ev event.EventApi) {
 	core = c
@@ -31,10 +51,12 @@ func Bootstrap(c pwd.PWDApi, ev event.EventApi) {
 }
 
 func Register(extend HandlerExtender) {
+	initPlaygrounds()
+
 	r := mux.NewRouter()
 	corsRouter := mux.NewRouter()
 
-	corsHandler := gh.CORS(gh.AllowCredentials(), gh.AllowedHeaders([]string{"x-requested-with", "content-type"}), gh.AllowedMethods([]string{"GET", "POST", "HEAD", "DELETE"}), gh.AllowedOrigins([]string{"*"}))
+	corsHandler := gh.CORS(gh.AllowCredentials(), gh.AllowedHeaders([]string{"x-requested-with", "content-type"}), gh.AllowedMethods([]string{"GET", "POST", "HEAD", "DELETE"}), gh.AllowedOrigins([]string{"http://training.play-with-docker.com", "http://play-with-moby.com"}))
 
 	// Specific routes
 	r.HandleFunc("/ping", Ping).Methods("GET")
@@ -46,6 +68,12 @@ func Register(extend HandlerExtender) {
 	corsRouter.HandleFunc("/sessions/{sessionId}/instances/{instanceName}/uploads", FileUpload).Methods("POST")
 	corsRouter.HandleFunc("/sessions/{sessionId}/instances/{instanceName}", DeleteInstance).Methods("DELETE")
 	corsRouter.HandleFunc("/sessions/{sessionId}/instances/{instanceName}/exec", Exec).Methods("POST")
+	corsRouter.HandleFunc("/sessions/{sessionId}/instances/{instanceName}/fstree", fsTree).Methods("GET")
+	corsRouter.HandleFunc("/sessions/{sessionId}/instances/{instanceName}/file", file).Methods("GET")
+
+	r.HandleFunc("/sessions/{sessionId}/instances/{instanceName}/editor", func(rw http.ResponseWriter, r *http.Request) {
+		http.ServeFile(rw, r, "www/editor.html")
+	})
 
 	r.HandleFunc("/ooc", func(rw http.ResponseWriter, r *http.Request) {
 		http.ServeFile(rw, r, "./www/ooc.html")
@@ -57,9 +85,6 @@ func Register(extend HandlerExtender) {
 	r.PathPrefix("/assets").Handler(http.FileServer(http.Dir("./www")))
 	r.HandleFunc("/robots.txt", func(rw http.ResponseWriter, r *http.Request) {
 		http.ServeFile(rw, r, "www/robots.txt")
-	})
-	r.HandleFunc("/sdk.js", func(rw http.ResponseWriter, r *http.Request) {
-		http.ServeFile(rw, r, "www/sdk.js")
 	})
 
 	corsRouter.HandleFunc("/sessions/{sessionId}/ws/", WSH)
@@ -84,6 +109,7 @@ func Register(extend HandlerExtender) {
 	}
 
 	n := negroni.Classic()
+
 	r.PathPrefix("/").Handler(negroni.New(negroni.Wrap(corsHandler(corsRouter))))
 	n.UseHandler(r)
 
@@ -122,7 +148,11 @@ func Register(extend HandlerExtender) {
 			rr.HandleFunc("/ping", Ping).Methods("GET")
 			rr.Handle("/metrics", promhttp.Handler())
 			rr.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-				http.Redirect(rw, r, fmt.Sprintf("https://%s", r.Host), http.StatusMovedPermanently)
+				target := fmt.Sprintf("https://%s%s", r.Host, r.URL.Path)
+				if len(r.URL.RawQuery) > 0 {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(rw, r, target, http.StatusMovedPermanently)
 			})
 			nr := negroni.Classic()
 			nr.UseHandler(rr)
@@ -141,5 +171,76 @@ func Register(extend HandlerExtender) {
 	} else {
 		log.Println("Listening on port " + config.PortNumber)
 		log.Fatal(httpServer.ListenAndServe())
+	}
+}
+
+func initPlaygrounds() {
+	pgs, err := core.PlaygroundList()
+	if err != nil {
+		log.Fatal("Error getting playgrounds for initialization")
+	}
+
+	for _, p := range pgs {
+		initAssets(p)
+		initOauthProviders(p)
+	}
+}
+
+func initAssets(p *types.Playground) {
+	if p.AssetsDir == "" {
+		p.AssetsDir = "default"
+	}
+
+	var b bytes.Buffer
+	t, err := template.New("landing.html").Delims("[[", "]]").ParseFiles(fmt.Sprintf("./www/%s/landing.html", p.AssetsDir))
+	if err != nil {
+		log.Fatalf("Error parsing template %v", err)
+	}
+	if err := t.Execute(&b, struct{ SegmentId string }{config.SegmentId}); err != nil {
+		log.Fatalf("Error executing template %v", err)
+	}
+	landingBytes, err := ioutil.ReadAll(&b)
+	if err != nil {
+		log.Fatalf("Error reading template bytes %v", err)
+	}
+	landings[p.Id] = landingBytes
+}
+
+func initOauthProviders(p *types.Playground) {
+	config.Providers[p.Id] = map[string]*oauth2.Config{}
+
+	if p.GithubClientID != "" && p.GithubClientSecret != "" {
+		conf := &oauth2.Config{
+			ClientID:     p.GithubClientID,
+			ClientSecret: p.GithubClientSecret,
+			Scopes:       []string{"user:email"},
+			Endpoint:     oauth2Github.Endpoint,
+		}
+
+		config.Providers[p.Id]["github"] = conf
+	}
+	if p.FacebookClientID != "" && p.FacebookClientSecret != "" {
+		conf := &oauth2.Config{
+			ClientID:     p.FacebookClientID,
+			ClientSecret: p.FacebookClientSecret,
+			Scopes:       []string{"email", "public_profile"},
+			Endpoint:     oauth2FB.Endpoint,
+		}
+
+		config.Providers[p.Id]["facebook"] = conf
+	}
+	if p.DockerClientID != "" && p.DockerClientSecret != "" {
+		oauth2.RegisterBrokenAuthHeaderProvider(".id.docker.com")
+		conf := &oauth2.Config{
+			ClientID:     p.DockerClientID,
+			ClientSecret: p.DockerClientSecret,
+			Scopes:       []string{"openid"},
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  "https://id.docker.com/id/oauth/authorize/",
+				TokenURL: "https://id.docker.com/id/oauth/token",
+			},
+		}
+
+		config.Providers[p.Id]["docker"] = conf
 	}
 }

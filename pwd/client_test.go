@@ -1,6 +1,7 @@
 package pwd
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -28,9 +29,9 @@ func TestClientNew(t *testing.T) {
 
 	_g.On("NewId").Return("aaaabbbbcccc")
 	_f.On("GetForSession", mock.AnythingOfType("*types.Session")).Return(_d, nil)
-	_d.On("CreateNetwork", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
-	_d.On("GetDaemonHost").Return("localhost")
-	_d.On("ConnectNetwork", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
+	_d.On("NetworkCreate", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
+	_d.On("DaemonHost").Return("localhost")
+	_d.On("NetworkConnect", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
 	_s.On("SessionPut", mock.AnythingOfType("*types.Session")).Return(nil)
 	_s.On("SessionCount").Return(1, nil)
 	_s.On("InstanceCount").Return(0, nil)
@@ -45,7 +46,8 @@ func TestClientNew(t *testing.T) {
 
 	playground := &types.Playground{Id: "foobar"}
 
-	session, err := p.SessionNew(playground, "", time.Hour, "", "", "")
+	sConfig := types.SessionConfig{Playground: playground, UserId: "", Duration: time.Hour, Stack: "", StackName: "", ImageName: ""}
+	session, err := p.SessionNew(context.Background(), sConfig)
 	assert.Nil(t, err)
 
 	client := p.ClientNew("foobar", session)
@@ -70,9 +72,9 @@ func TestClientCount(t *testing.T) {
 
 	_g.On("NewId").Return("aaaabbbbcccc")
 	_f.On("GetForSession", mock.AnythingOfType("*types.Session")).Return(_d, nil)
-	_d.On("CreateNetwork", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
-	_d.On("GetDaemonHost").Return("localhost")
-	_d.On("ConnectNetwork", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
+	_d.On("NetworkCreate", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
+	_d.On("DaemonHost").Return("localhost")
+	_d.On("NetworkConnect", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
 	_s.On("SessionPut", mock.AnythingOfType("*types.Session")).Return(nil)
 	_s.On("ClientPut", mock.AnythingOfType("*types.Client")).Return(nil)
 	_s.On("ClientCount").Return(1, nil)
@@ -85,7 +87,8 @@ func TestClientCount(t *testing.T) {
 	p.generator = _g
 	playground := &types.Playground{Id: "foobar"}
 
-	session, err := p.SessionNew(playground, "", time.Hour, "", "", "")
+	sConfig := types.SessionConfig{Playground: playground, UserId: "", Duration: time.Hour, Stack: "", StackName: "", ImageName: ""}
+	session, err := p.SessionNew(context.Background(), sConfig)
 	assert.Nil(t, err)
 
 	p.ClientNew("foobar", session)
@@ -110,9 +113,9 @@ func TestClientResizeViewPort(t *testing.T) {
 
 	_g.On("NewId").Return("aaaabbbbcccc")
 	_f.On("GetForSession", mock.AnythingOfType("*types.Session")).Return(_d, nil)
-	_d.On("CreateNetwork", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
-	_d.On("GetDaemonHost").Return("localhost")
-	_d.On("ConnectNetwork", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
+	_d.On("NetworkCreate", "aaaabbbbcccc", dtypes.NetworkCreate{Attachable: true, Driver: "overlay"}).Return(nil)
+	_d.On("DaemonHost").Return("localhost")
+	_d.On("NetworkConnect", config.L2ContainerName, "aaaabbbbcccc", "").Return("10.0.0.1", nil)
 	_s.On("SessionPut", mock.AnythingOfType("*types.Session")).Return(nil)
 	_s.On("SessionCount").Return(1, nil)
 	_s.On("InstanceCount").Return(0, nil)
@@ -127,7 +130,8 @@ func TestClientResizeViewPort(t *testing.T) {
 	p.generator = _g
 	playground := &types.Playground{Id: "foobar"}
 
-	session, err := p.SessionNew(playground, "", time.Hour, "", "", "")
+	sConfig := types.SessionConfig{Playground: playground, UserId: "", Duration: time.Hour, Stack: "", StackName: "", ImageName: ""}
+	session, err := p.SessionNew(context.Background(), sConfig)
 	assert.Nil(t, err)
 	client := p.ClientNew("foobar", session)
 	_s.On("ClientFindBySessionId", "aaaabbbbcccc").Return([]*types.Client{client}, nil)

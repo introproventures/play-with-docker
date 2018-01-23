@@ -1,7 +1,7 @@
 (function() {
   'use strict';
 
-  var app = angular.module('DockerPlay', ['ngMaterial', 'ngFileUpload']);
+  var app = angular.module('DockerPlay', ['ngMaterial', 'ngFileUpload', 'ngclipboard']);
 
   // Automatically redirects user to a new session when bypassing captcha.
   // Controller keeps code/logic separate from the HTML
@@ -23,6 +23,7 @@
     $scope.sessionId = SessionService.getCurrentSessionId();
     $scope.instances = [];
     $scope.idx = {};
+    $scope.host = window.location.host;
     $scope.idxByHostname = {};
     $scope.selectedInstance = null;
     $scope.isAlive = true;
@@ -112,9 +113,7 @@
         $scope.idx[i.name] = i;
         $scope.idxByHostname[i.hostname] = i;
       } else {
-        $scope.idx[i.name].ip = i.ip;
-        $scope.idx[i.name].hostname = i.hostname;
-        $scope.idx[i.name].proxy_host = i.proxy_host;
+        $scope.idx[i.name] = Object.assign($scope.idx[i.name], info);
       }
 
       return $scope.idx[i.name];
@@ -391,7 +390,7 @@
     }
 
     $scope.getProxyUrl = function(instance, port) {
-      var url = 'http://' + instance.proxy_host + '-' + port + '.direct.' + window.location.host;
+      var url = 'http://' + instance.proxy_host + '-' + port + '.direct.' + $scope.host;
 
       return url;
     }
@@ -439,7 +438,14 @@
       }).finally(function() {
         updateDeleteInstanceBtnState(false);
       });
-    }
+    };
+
+    $scope.openEditor = function(instance) {
+      var w = window.screen.availWidth * 45  / 100;
+      var h = window.screen.availHeight * 45  / 100;
+      $window.open('/sessions/' + instance.session_id + '/instances/'+instance.name+'/editor', 'editor',
+        'width='+w+',height='+h+',resizable,scrollbars=yes,status=1');
+    };
 
     $scope.loadPlaygroundConf();
     $scope.getSession($scope.sessionId);
@@ -531,9 +537,12 @@
       }
     }
   }])
-  .config(['$mdIconProvider', '$locationProvider', function($mdIconProvider, $locationProvider) {
+  .config(['$mdIconProvider', '$locationProvider', '$mdThemingProvider', function($mdIconProvider, $locationProvider, $mdThemingProvider) {
     $locationProvider.html5Mode({enabled: true, requireBase: false});
     $mdIconProvider.defaultIconSet('../assets/social-icons.svg', 24);
+    $mdThemingProvider.theme('kube')
+      .primaryPalette('grey')
+      .accentPalette('grey');
   }])
   .component('settingsIcon', {
     template : "<md-button class='md-mini' ng-click='$ctrl.onClick()'><md-icon class='material-icons'>settings</md-icon></md-button>",

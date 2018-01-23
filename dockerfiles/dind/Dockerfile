@@ -1,7 +1,7 @@
 ARG VERSION=docker:stable-dind
 FROM ${VERSION}
 
-RUN apk add --no-cache git tmux py2-pip apache2-utils vim build-base gettext-dev curl bash-completion bash util-linux jq openssh
+RUN apk add --no-cache git tmux py2-pip apache2-utils vim build-base gettext-dev curl bash-completion bash util-linux jq openssh tree
 
 ENV GOPATH /root/go
 ENV PATH $PATH:$GOPATH
@@ -15,7 +15,7 @@ RUN mkdir -p /opt && cd /opt && \
     ./configure && make install LDFLAGS=-lintl && \
     rm -rf httping-2.5
 
-ENV COMPOSE_VERSION=1.17.0
+ENV COMPOSE_VERSION=1.18.0
 ENV MACHINE_VERSION=v0.13.0
 # Install Compose and Machine
 RUN pip install docker-compose==${COMPOSE_VERSION}
